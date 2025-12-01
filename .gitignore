@@ -1,0 +1,47 @@
+# ----------------------
+# Python
+# ----------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pkl
+*.db
+*.egg-info/
+*.log
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Cache & tooling
+.cache/
+.mypy_cache/
+.pytest_cache/
+ruff_cache/
+
+# DuckDB
+*.duckdb
+*.duckdb.wal
+
+# Environment & secrets
+.env
+.env.*
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+
+# Build artifacts
+build/
+dist/
+htmlcov/
+site/
