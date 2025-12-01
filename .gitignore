@@ -24,6 +24,9 @@ env/
 .pytest_cache/
 ruff_cache/
 
+# Documents & Data
+documents/
+
 # DuckDB
 *.duckdb
 *.duckdb.wal
@@ -45,3 +48,4 @@ build/
 dist/
 htmlcov/
 site/
+

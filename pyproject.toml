@@ -1,24 +1,31 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "fsm-llm-web-summary-demo"
 version = "0.1.0"
-description = "Demo-only FSM + LLM pipeline for scraping and summarizing webpages using DuckDB and async workers."
-readme = "README.md"
+description = "FSM-driven DuckDB web scraping + summarization demo"
+authors = [
+  { name = "Xiao-Fei Zhang" }
+]
+readme = "README_web_demo.md"
 requires-python = ">=3.10"
 
-authors = [
-  { name = "Your Name" }
-]
-
+# Put your dependencies here
 dependencies = [
-  "duckdb>=1.0.0",
-  "httpx>=0.27",
-  "readability-lxml>=0.8.1",
-  "trafilatura>=1.6.0",
-  "python-dotenv>=1.0.0",
-  "openai>=1.0.0",
-  "anthropic>=1.0.0",
-  "pydantic>=2.6.0",
+  "requests",
+  "httpx",
+  "beautifulsoup4",
+  "duckdb",
+  "pydantic>=2",
+  "tenacity",
+  # "openai", "anthropic", etc if you want them installed via this project
 ]
 
-[project.optional-dependencies]
-dev =
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["*"]
