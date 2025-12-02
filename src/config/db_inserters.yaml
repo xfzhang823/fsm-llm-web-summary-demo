@@ -1,0 +1,102 @@
+# db_inserters.yaml
+#
+# YAML-driven insert policies for the *web summary demo*.
+#
+# Tables:
+#   - url
+#   - pipeline_control
+#   - web_page
+#   - web_summary
+#
+# This file is consumed by insert_df_with_config(), which:
+#   - looks up defaults + per-table config
+#   - stamps metadata columns
+#   - applies dedup policy (pk-scoped upsert by default)
+#
+# Valid stamp modes (per db_inserters.py):
+#   - now      → stamp with current UTC timestamp
+#   - default  → use llm_defaults or provided params
+#   - param    → use explicit kwargs passed into insert_df_with_config()
+#   - none     → do not stamp / leave as-is
+#
+# Iteration strategy:
+#   - For this demo, iteration is always set in the Pydantic model
+#     (PipelineState, WebPageRow, WebSummaryRow), so YAML does **not**
+#     override it.
+
+defaults:
+  # Logical intent marker; actual behavior is controlled by dedup.
+  mode: append
+
+  # Default dedup policy for all tables:
+  #   - pk_scoped → upsert by primary key (see DUCKDB_SCHEMA_REGISTRY)
+  dedup: pk_scoped
+
+  # Global stamping:
+  #   created_at / updated_at are set to "now" unless overridden.
+  stamp:
+    created_at: now
+    updated_at: now
+
+  # Do not auto-infer iteration in this demo; models provide it explicitly.
+  inherit:
+    iteration: none
+
+  # LLM defaults: only used when a table has llm_provider/model_id
+  # AND the column is missing/NaN AND stamp mode is "default".
+  llm_defaults:
+    llm_provider: OPENAI
+    model_id: GPT_4_1_NANO
+
+
+tables:
+  # ──────────────────────────────────────────────────────────────────────
+  # pipeline_control  (FSM snapshot; mostly mutated via SQL, not inserts)
+  # ──────────────────────────────────────────────────────────────────────
+  pipeline_control:
+    dedup: pk_scoped
+    stamp:
+      # Keep explicit so it's obvious these are managed as timestamps.
+      created_at: now
+      updated_at: now
+      # iteration is part of the model; do not override via YAML.
+      iteration: none
+
+  # ──────────────────────────────────────────────────────────────────────
+  # url  (seed URL registry; no iteration / LLM fields)
+  # ──────────────────────────────────────────────────────────────────────
+  url:
+    dedup: pk_scoped
+    stamp:
+      created_at: now
+      updated_at: now
+      # These columns do not exist on this table; explicit "none" here
+      # makes the intent clear and future-proof.
+      iteration: none
+      llm_provider: none
+      model_id: none
+
+  # ──────────────────────────────────────────────────────────────────────
+  # web_page  (Stage A output: cleaned page text)
+  # ──────────────────────────────────────────────────────────────────────
+  web_page:
+    dedup: pk_scoped
+    stamp:
+      created_at: now
+      updated_at: now
+      # iteration is set in WebPageRow; avoid YAML-driven overrides.
+      iteration: none
+
+  # ──────────────────────────────────────────────────────────────────────
+  # web_summary  (Stage B output: LLM summary + metadata)
+  # ──────────────────────────────────────────────────────────────────────
+  web_summary:
+    dedup: pk_scoped
+    stamp:
+      created_at: now
+      updated_at: now
+      # iteration + llm_provider + model_id are set by WebSummaryRow.
+      # We keep YAML from trying to infer them.
+      iteration: none
+      llm_provider: none
+      model_id: none

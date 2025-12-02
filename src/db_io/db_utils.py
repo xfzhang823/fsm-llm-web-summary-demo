@@ -46,8 +46,8 @@ from pydantic_core import PydanticUndefined
 import pandas as pd
 
 # Project level
-from job_bot.db_io.get_db_connection import get_db_connection
-from job_bot.db_io.pipeline_enums import (
+from db_io.get_db_connection import get_db_connection
+from fsm.pipeline_enums import (
     PipelineStage,
     PipelineStatus,
     PipelineTaskState,
@@ -361,9 +361,7 @@ def get_urls_from_pipeline_control(
 
         if active_urls_only:
             # Broadly "active": not in terminal human-gate states.
-            where.append(
-                "(task_state IS NULL OR task_state NOT IN ('skipped','completed'))"
-            )
+            where.append("(task_state IS NULL OR task_state NOT IN ('SKIP','HOLD'))")
 
         where_sql = " AND ".join(where) if where else "1=1"
 
@@ -506,37 +504,6 @@ def get_urls_by_stage(
             """,
             (stage.value,),
         ).df()
-        return df["url"].tolist()
-    finally:
-        con.close()
-
-
-# todo: to be deprecated entirely; delete later
-def get_urls_ready_for_transition(
-    stage: PipelineStage, limit: Optional[int] = None
-) -> List[str]:
-    """
-    Specialized picker: rows marked for next-stage transition (decision_flag=1).
-
-    Args:
-        stage: Current stage to check.
-        limit: Optional max rows.
-
-    Returns:
-        List[str]: URLs flagged for transition.
-    """
-    con = get_db_connection()
-    try:
-        sql = f"""
-            SELECT url
-            FROM {TableName.PIPELINE_CONTROL.value}
-            WHERE stage = ? AND decision_flag = 1
-        """
-        params: List[object] = [stage.value]
-        if limit is not None:
-            sql += " LIMIT ?"
-            params.append(limit)
-        df = con.execute(sql, params).df()
         return df["url"].tolist()
     finally:
         con.close()

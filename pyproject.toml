@@ -21,6 +21,16 @@ dependencies = [
   "pydantic>=2",
   "tenacity",
   # "openai", "anthropic", etc if you want them installed via this project
+  "pylint>=4.0.4",
+  "pylance>=0.39.0",
+  "pandas>=2.3.3",
+  "pyyaml>=6.0.3",
+  "matplotlib>=3.10.7",
+  "playwright>=1.56.0",
+  "aiolimiter>=1.2.1",
+  "openai>=2.8.1",
+  "anthropic>=0.75.0",
+  "python-dotenv>=1.2.1",
 ]
 
 [tool.setuptools]

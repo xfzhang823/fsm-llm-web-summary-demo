@@ -1,0 +1,27 @@
+[
+  {
+    "url": "https://en.wikipedia.org/wiki/Pythagorean_theorem",
+    "source": "demo",
+    "tags": ["mathematics", "geometry", "history"]
+  },
+  {
+    "url": "https://www.nasa.gov/image-article/webb-telescopes-first-deep-field/",
+    "source": "manual",
+    "tags": ["space", "astronomy", "james-webb"]
+  },
+  {
+    "url": "https://www.gutenberg.org/ebooks/1342",
+    "source": "csv_import",
+    "tags": ["literature", "classic", "free-ebook"]
+  },
+  {
+    "url": "https://www.britannica.com/animal/axolotl",
+    "source": "demo",
+    "tags": "biology, amphibians, mexican"
+  },
+  {
+    "url": "https://openai.com/research",
+    "source": "manual",
+    "tags": ["ai", "research", "technology"]
+  }
+]

@@ -1,0 +1,50 @@
+defaults:
+  order_by:
+    - updated_at DESC # DESC is DDL for descending order
+    - created_at DESC
+  per_url_group_key: url
+  group_by_url_key: url
+
+tables:
+  job_urls:
+    rehydrate: job_bot.db_io.flatten_and_rehydrate:rehydrate_job_urls_from_table
+    group_by_url: true
+
+  job_postings:
+    rehydrate: job_bot.db_io.flatten_and_rehydrate:rehydrate_job_postings_from_table
+    filters: [url, iteration, llm_provider, model_id]
+    group_by_url: true
+
+  extracted_requirements:
+    rehydrate: job_bot.db_io.flatten_and_rehydrate:rehydrate_extracted_requirements_from_table
+    filters: [url, iteration, llm_provider, model_id]
+    group_by_url: true
+
+  flattened_requirements:
+    rehydrate: job_bot.db_io.flatten_and_rehydrate:rehydrate_requirements_from_table
+    filters: [url, iteration]
+    group_by_url: true           # return dict[url] -> Requirements
+
+  flattened_responsibilities:
+    rehydrate: job_bot.db_io.flatten_and_rehydrate:rehydrate_responsibilities_from_table
+    filters: [url, iteration]
+    group_by_url: true           # dict[url] -> Responsibilities
+
+  edited_responsibilities:
+    rehydrate: job_bot.db_io.flatten_and_rehydrate:rehydrate_nested_responsibilities_from_table
+    filters: [url, iteration, llm_provider, model_id]
+    group_by_url: true  # multi-URL calls return dict[url, Model]; single-URL calls return Model
+
+  similarity_metrics:
+    rehydrate: null              # return raw DF (validated separately)
+    filters: [url, iteration, version, resp_llm_provider, resp_model_id]
+    order_by:
+      - updated_at DESC
+
+  pipeline_control:
+    rehydrate: null            # just rows/DF for control-plane
+    filters: [url, iteration, stage, status, task_state]
+    order_by:
+      - updated_at DESC
+    group_by_url: false        # control-plane rows are 1-per-(url,iteration); no dict-of-url needed
+

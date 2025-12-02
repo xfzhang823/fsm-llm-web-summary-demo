@@ -1,22 +1,51 @@
 """
-duckdb_table_models.py
+models/db_table_models.py
 
-Refactored with PURE mixins to avoid MRO issues:
+Pydantic models for ALL DuckDB tables used in the *web summary demo*.
+
+Data model (4 tables)
+---------------------
+1) url
+   - Canonical list of URLs to process
+   - Fields: url, source, tags, created_at, updated_at
+
+2) pipeline_control
+   - FSM state + lease metadata (one row per (url, iteration))
+   - Fields: url, iteration, stage, status, task_state,
+             is_claimed, worker_id, lease_until,
+             notes,
+             source_file, created_at, updated_at
+
+3) web_page
+   - Raw and cleaned page text (fetch result)
+   - Fields: url, iteration, status_code, html, clean_text,
+             fetched_at, fetch_error, created_at, updated_at
+
+4) web_summary
+   - LLM output and metadata
+   - Fields: url, iteration, summary_text, summary_json,
+             llm_provider, model_id, tokens_prompt,
+             tokens_completion, tokens_total,
+             created_at, updated_at
+
+Mixins
+------
 - Mixins (TimestampedMixin, LLMStampedMixin) DO NOT inherit from BaseModel.
 - AppBaseModel is the ONLY base that subclasses pydantic.BaseModel.
 - Always list mixins BEFORE AppBaseModel in class bases.
 
-Design principles:
+Design principles
+-----------------
 - Each table has only the fields it truly needs.
-- `pipeline_control` is FSM-only (no history; no provider).
-- `job_urls` is a seed list (no iteration).
+- `pipeline_control` is FSM-only (no history; no provider/model metadata).
 """
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Optional, Union, Any
+from typing import Optional, Union, Any, Dict
 import math
+
 import pandas as pd
 from pydantic import (
     BaseModel,
@@ -27,13 +56,10 @@ from pydantic import (
     ValidationInfo,
 )
 
-
-# User defined
-from job_bot.db_io.pipeline_enums import (
+from fsm.pipeline_enums import (
     PipelineStage,
     PipelineStatus,
     PipelineTaskState,
-    Version,
     LLMProvider,
 )
 
@@ -52,8 +78,14 @@ class AppBaseModel(BaseModel):
     )
 
 
-class TimestampedMixin(BaseModel):
-    """Opt-in audit timestamps. Use ONLY where you truly need them."""
+class TimestampedMixin:
+    """
+    Opt-in audit timestamps.
+
+    Use ONLY where you truly need them:
+    - created_at: set on insert
+    - updated_at: set on update
+    """
 
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: Optional[datetime] | None = None
@@ -71,13 +103,13 @@ class LLMStampedMixin:
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-class PipelineState(AppBaseModel, TimestampedMixin):
+class PipelineState(TimestampedMixin, AppBaseModel):
     """
     One row in `pipeline_control`.
 
     Conventions
     -----------
-    - stage:       UPPER-CASE enum value (e.g., "JOB_URLS", "JOB_POSTINGS")
+    - stage:       UPPER-CASE enum value (e.g., "URL", "WEB_PAGE", "WEB_SUMMARY")
     - status:      UPPER-CASE enum value (e.g., "NEW", "IN_PROGRESS", "COMPLETED")
     - task_state:  UPPER-CASE enum value (e.g., "READY", "PAUSED", "SKIP", "HOLD")
 
@@ -94,10 +126,9 @@ class PipelineState(AppBaseModel, TimestampedMixin):
     - `task_state`     → PipelineTaskState (forced UPPER + legacy mapping):
         DONE/COMPLETED → HOLD, SKIPPED → SKIP, RUNNING/RETRY/ABANDONED → READY
     - `is_claimed`     → bool (accepts 0/1/"true"/"false")
-    - `transition_flag`→ int in {0,1} (defaults to 0)
     - `lease_until`    → datetime (accepts str/pandas.Timestamp/None)
     - `worker_id`      → None if blank/whitespace
-    - `url`            → HttpUrl **or** str (Union), preserves non-standard job-board URLs
+    - `url`            → HttpUrl **or** str (Union), preserves non-standard URLs
 
     Invariants
     ----------
@@ -110,10 +141,7 @@ class PipelineState(AppBaseModel, TimestampedMixin):
     so normalization stays centralized here.
     """
 
-    # If you want enums to serialize as their .value automatically:
-    # model_config = ConfigDict(use_enum_values=True)
-
-    url: Union[HttpUrl, str]  # or just str, if you don't want strict URL checks
+    url: Union[HttpUrl, str]
     iteration: int = 0
     stage: PipelineStage
     status: PipelineStatus = Field(default=PipelineStatus.NEW)
@@ -124,17 +152,10 @@ class PipelineState(AppBaseModel, TimestampedMixin):
     worker_id: Optional[str] = None
     lease_until: Optional[datetime] = None
 
-    decision_flag: Optional[int] = None  # legacy
-    transition_flag: int = 0  # 0|1
     notes: Optional[str] = None
     source_file: Optional[str] = None
-    version: Optional["Version"] = None  # keep Enum in-code
 
-    @property
-    def version_str(self) -> Optional[str]:
-        return self.version.value if self.version else None
-
-    # ---------- SINGLE iteration validator (keep only this) ----------
+    # ---------- SINGLE iteration validator ----------
     @field_validator("iteration", mode="before")
     @classmethod
     def _coerce_iteration(cls, v: Any) -> int:
@@ -238,251 +259,108 @@ class PipelineState(AppBaseModel, TimestampedMixin):
         # If you want to allow non-standard URLs, keep returning str:
         return str(v).strip()
 
-    # ---------- FLAGS: clamp to {0,1} and never return None ----------
-    @field_validator("transition_flag", mode="before")
-    @classmethod
-    def _coerce_transition_flag(cls, v: Any) -> int:
-        if v is None or (isinstance(v, float) and math.isnan(v)):
-            return 0
-        try:
-            return 1 if int(float(v)) != 0 else 0
-        except Exception:
-            s = str(v).strip().lower()
-            return 1 if s in {"true", "t", "yes", "y"} else 0
-
-    # ---------- VERSION: accept Enum, int/float, or strings ----------
-    @field_validator("version", mode="before")
-    @classmethod
-    def _coerce_version(cls, v: Any):
-        if v is None:
-            return None
-        # Already an Enum instance
-        from job_bot.db_io.pipeline_enums import Version  # adjust import path if needed
-
-        if isinstance(v, Version):
-            return v
-        # float/nan -> None or int
-        if isinstance(v, float):
-            if math.isnan(v):
-                return None
-            v = int(v)
-        # ints -> try IntEnum mapping
-        if isinstance(v, int):
-            try:
-                return Version(v)
-            except Exception:
-                # If your Version is StrEnum ('v1'), map int -> f"v{int}"
-                try:
-                    return Version(f"v{v}")
-                except Exception:
-                    return None
-        # strings -> try by name/value
-        if isinstance(v, str):
-            s = v.strip()
-            if s == "" or s.lower() in {"null", "none", "n/a"}:
-                return None
-            # allow "1" -> Version(1), or "v1" -> Version("v1"), or "V1" name
-            if s.lstrip("-").isdigit():
-                try:
-                    return Version(int(s))
-                except Exception:
-                    pass
-            try:
-                return Version(s)  # value
-            except Exception:
-                try:
-                    return Version[s.upper()]  # name
-                except Exception:
-                    return None
-        # Anything else -> give up
-        return None
-
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Input table (seed list; no iteration)
+# URL registry (seed list; NO iteration)
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-class JobUrlsRow(AppBaseModel, TimestampedMixin):
+class UrlRow(TimestampedMixin, AppBaseModel):
     """
-    Registry of job posting URLs. Iteration does NOT belong here.
+    Canonical registry of URLs to process.
+
+    This table is intentionally small: iteration does NOT belong here.
     """
 
     url: Union[HttpUrl, str]
-    # Optional descriptive metadata (kept minimal)
-    company: Optional[str] = None
-    job_title: Optional[str] = None
-    source_file: Optional[str] = None
+    source: Optional[str] = Field(
+        default=None,
+        description="Where this URL came from (e.g. 'manual', 'csv_import').",
+    )
+    tags: Optional[str] = Field(
+        default=None,
+        description="Optional free-form tags (comma-separated or JSON string).",
+    )
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Stage/data bases
-# ──────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────-
+# Stage/data tables
+# ─────────────────────────────────────────────────────────────────────────────-
 
 
-class BaseStageRow(AppBaseModel):
+class WebPageRow(TimestampedMixin, AppBaseModel):
     """
-    Minimal shared fields for per-URL, per-iteration stage tables.
-    Intentionally excludes timestamps and LLM metadata.
+    Raw and cleaned page text for a single fetch attempt.
+
+    One row per (url, iteration).
     """
 
     url: Union[HttpUrl, str]
     iteration: int = 0
-    # Optional provenance/versioning knobs (only if you actually use them)
-    source_file: Optional[str] = None
 
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Stage/data tables
-# ──────────────────────────────────────────────────────────────────────────────
-
-
-class JobPostingsRow(BaseStageRow, LLMStampedMixin, TimestampedMixin):
-    """
-    Raw scraped job posting content in flat format.
-    Timestamps are useful here for freshness/debugging.
-    """
-
-    job_title: Optional[str] = None
-    company: Optional[str] = None
-    location: Optional[str] = None
-    salary_info: Optional[str] = None
-    posted_date: Optional[str] = None
-    content: Optional[str] = Field(
+    status_code: Optional[int] = None
+    html: Optional[str] = Field(
         default=None,
-        description="Full job description text or serialized JSON content.",
+        description="Raw HTML returned by the HTTP client.",
+    )
+    clean_text: Optional[str] = Field(
+        default=None,
+        description="Extracted plain text / readability-cleaned content.",
+    )
+    fetched_at: Optional[datetime] = None
+    fetch_error: Optional[str] = Field(
+        default=None,
+        description="Error message if fetch/parse failed.",
     )
 
+    @field_validator("iteration", mode="before")
+    @classmethod
+    def _coerce_iteration(cls, v: Any) -> int:
+        return PipelineState._coerce_iteration(v)  # reuse logic
 
-class ExtractedRequirementsRow(BaseStageRow, LLMStampedMixin):
+
+class WebSummaryRow(LLMStampedMixin, TimestampedMixin, AppBaseModel):
     """
-    Structured job requirements extracted from a job posting.
-    """
+    LLM-generated summary and metadata for a URL.
 
-    requirement_key: str
-    requirement: str
-    # Optional grouping you actually use
-    requirement_category: Optional[str] = None
-    requirement_category_key: Optional[int] = None  # per-category order
-
-
-class FlattenedRequirementsRow(BaseStageRow, LLMStampedMixin):
-    """
-    Flattened (normalized) job requirements used for downstream matching.
+    One row per (url, iteration, llm_provider, model_id).
     """
 
-    requirement_key: str
-    requirement: str
+    url: Union[HttpUrl, str]
+    iteration: int = 0
 
-
-class FlattenedResponsibilitiesRow(BaseStageRow):
-    """
-    Flattened canonical resume responsibilities (provider-agnostic).
-    """
-
-    responsibility_key: str
-    responsibility: str
-
-    # Optional resume structuring fields (only if used)
-    # section: Optional[str] = None
-    # role_title: Optional[str] = None
-    # start_year: Optional[int] = None
-    # end_year: Optional[int] = None
-
-
-class PrunedResponsibilitiesRow(BaseStageRow):
-    """
-    Responsibilities pruned via rules/review (still provider-agnostic).
-    """
-
-    responsibility_key: str
-    responsibility: str
-    pruned_by: str = Field(
-        ..., description="Who/what performed pruning (e.g., 'llm', 'xfz', 'heuristic')."
+    summary_text: Optional[str] = Field(
+        default=None,
+        description="Human-readable summary text of the web page.",
+    )
+    summary_json: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Optional structured summary payload (JSON object).",
     )
 
+    tokens_prompt: Optional[int] = None
+    tokens_completion: Optional[int] = None
+    tokens_total: Optional[int] = None
 
-class EditedResponsibilitiesRow(BaseStageRow, LLMStampedMixin, TimestampedMixin):
-    """
-    LLM-edited responsibilities tailored to requirements.
-    This is where LLM metadata belongs.
-    """
-
-    responsibility_key: str
-    requirement_key: str
-    responsibility: str
+    @field_validator("iteration", mode="before")
+    @classmethod
+    def _coerce_iteration(cls, v: Any) -> int:
+        return PipelineState._coerce_iteration(v)  # reuse logic
 
 
-class SimilarityMetricsRow(BaseStageRow):
-    """
-    Pairwise similarity/entailment between resume responsibilities and
-    job requirements.
-
-    Not an LLM artifact; track your metrics backends separately if needed.
-    """
-
-    # join keys
-    responsibility_key: str
-    requirement_key: str
-
-    # denormalized text (handy for inspection/debug)
-    responsibility: str
-    requirement: str
-
-    # editorial pass (ORIGINAL vs EDITED)
-    version: Version = Field(default=Version.ORIGINAL)
-
-    # editor provenance (ONLY populated when version=EDITED)
-    resp_llm_provider: Optional[str] = None
-    resp_model_id: Optional[str] = None
-
-    # metrics backends (these identify the scoring engines)
-    similarity_backend: Optional[str] = (
-        None  # e.g. "sentence-transformers/all-mpnet-base-v2"
-    )
-    nli_backend: Optional[str] = None  # e.g. "microsoft/deberta-v3-large-mnli"
-
-    # raw scores
-    bert_score_precision: Optional[float] = None
-    soft_similarity: Optional[float] = None
-    word_movers_distance: Optional[float] = None
-    deberta_entailment_score: Optional[float] = None
-    roberta_entailment_score: Optional[float] = None
-
-    # categorized
-    bert_score_precision_cat: Optional[str] = None
-    soft_similarity_cat: Optional[str] = None
-    word_movers_distance_cat: Optional[str] = None
-    deberta_entailment_score_cat: Optional[str] = None
-    roberta_entailment_score_cat: Optional[str] = None
-
-    # derived/scaled
-    scaled_bert_score_precision: Optional[float] = None
-    scaled_soft_similarity: Optional[float] = None
-    scaled_word_movers_distance: Optional[float] = None
-    scaled_deberta_entailment_score: Optional[float] = None
-    scaled_roberta_entailment_score: Optional[float] = None
-    composite_score: Optional[float] = None
-    pca_score: Optional[float] = None
-
-
-# ──────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────-
 # Explicit export list
-# ──────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────-
+
 
 __all__ = [
+    # Core tables
     "PipelineState",
-    "JobUrlsRow",
-    "JobPostingsRow",
-    "ExtractedRequirementsRow",
-    "FlattenedRequirementsRow",
-    "FlattenedResponsibilitiesRow",
-    "PrunedResponsibilitiesRow",
-    "EditedResponsibilitiesRow",
-    "SimilarityMetricsRow",
-    # bases/mixins (export if the registry/type checks need them)
+    "UrlRow",
+    "WebPageRow",
+    "WebSummaryRow",
+    # Bases / mixins
     "AppBaseModel",
-    "BaseStageRow",
     "TimestampedMixin",
     "LLMStampedMixin",
 ]

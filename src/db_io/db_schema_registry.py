@@ -1,7 +1,7 @@
 # db_io/db_table_registry.py
 
 """
-Authoritative registry for all DuckDB tables used in the resume–job alignment pipeline.
+Authoritative registry for all DuckDB tables used in the *web summary demo*.
 
 This module centralizes:
 - ✅ Table names (`TableName` enum) for structured reference
@@ -29,8 +29,8 @@ column order to use for IO.
 ✅ USAGE EXAMPLES
 
 >>> from db_io.db_table_registry import DUCKDB_SCHEMA_REGISTRY, TableName
->>> schema = DUCKDB_SCHEMA_REGISTRY[TableName.EXTRACTED_REQUIREMENTS]
->>> schema_columns = DUCKDB_SCHEMA_REGISTRY[TableName.JOB_POSTINGS].column_order
+>>> schema = DUCKDB_SCHEMA_REGISTRY[TableName.WEB_SUMMARY]
+>>> schema_columns = DUCKDB_SCHEMA_REGISTRY[TableName.WEB_PAGE].column_order
 
 # Align a DataFrame to the canonical order:
 >>> df = schema.align_df(df)
@@ -38,33 +38,32 @@ column order to use for IO.
 >>> schema.log_pk_dupes(df, logger)
 
 # Query by URL with a stable projection:
->>> sql = schema.select_by_url_sql(["url", "requirement_key", "requirement"],
-...                                order_by="requirement_key")
->>> con.execute(sql, ("https://example.com/job1",)).df()
+>>> sql = schema.select_by_url_sql(["url", "summary_text", "created_at"],
+...                                order_by="created_at DESC")
+>>> con.execute(sql, ("https://example.com",)).df()
 
 This file is a **single source of truth** (SST) for DuckDB table behavior.
 """
 
-# Imports
+from __future__ import annotations
+
 import logging
 from typing import Optional, Type
+
 from pydantic import BaseModel
 
-from job_bot.db_io.pipeline_enums import TableName
-from job_bot.db_io.db_utils import align_df_with_schema
-from job_bot.models.db_table_models import (
+from fsm.pipeline_enums import TableName
+from db_io.db_utils import align_df_with_schema
+from models.db_table_models import (
     PipelineState,
-    JobUrlsRow,
-    JobPostingsRow,
-    FlattenedRequirementsRow,
-    FlattenedResponsibilitiesRow,
-    EditedResponsibilitiesRow,
-    SimilarityMetricsRow,
+    UrlRow,
+    WebPageRow,
+    WebSummaryRow,
 )
 
 logger = logging.getLogger(__name__)
 
-# Which columns, if present, we treat as "standard metadata" in summaries
+# Which columns, if present, we treat as "standard metadata" in summaries / logs
 STANDARD_METADATA_FIELDS = {
     "source_file",
     "iteration",
@@ -72,9 +71,6 @@ STANDARD_METADATA_FIELDS = {
     "updated_at",
     "llm_provider",
     "model_id",
-    "version",
-    "resp_llm_provider",
-    "resp_model_id",
     # FSM control
     "stage",
     "status",
@@ -93,110 +89,41 @@ DUCKDB_COLUMN_ORDER = {
         "is_claimed",
         "worker_id",
         "lease_until",
-        "decision_flag",  # NEW: 1 / 0 (go / no go)
-        "transition_flag",  # NEW 1 / 0 (have applied / not applied)
-        "version",
         "source_file",
         "notes",
         "created_at",
         "updated_at",
     ],
-    TableName.JOB_URLS.value: [
+    TableName.URL.value: [
         "url",
-        "company",
-        "job_title",
-        "source_file",
+        "source",
+        "tags",
         "created_at",
         "updated_at",
     ],
-    # ✅ Includes llm_provider/model_id
-    TableName.JOB_POSTINGS.value: [
+    TableName.WEB_PAGE.value: [
         "url",
         "iteration",
-        "llm_provider",
-        "model_id",
-        "job_title",
-        "company",
-        "location",
-        "salary_info",
-        "posted_date",
-        "content",
-        "source_file",
+        "status_code",
+        "html",
+        "clean_text",
+        "fetched_at",
+        "fetch_error",
         "created_at",
         "updated_at",
     ],
-    # ✅ Includes llm_provider/model_id
-    # todo: This table is to be retired completely
-    # todo: only for transferring file from file ETL pipeline into db
-    TableName.EXTRACTED_REQUIREMENTS.value: [
+    TableName.WEB_SUMMARY.value: [
         "url",
         "iteration",
         "llm_provider",
         "model_id",
-        "requirement_key",
-        "requirement",
-        "requirement_category",
-        "requirement_category_key",
-        "source_file",
-    ],
-    TableName.FLATTENED_REQUIREMENTS.value: [
-        "url",
-        "iteration",
-        "llm_provider",
-        "model_id",
-        "requirement_key",
-        "requirement",
-        "source_file",
-    ],
-    TableName.FLATTENED_RESPONSIBILITIES.value: [
-        "url",
-        "iteration",
-        "responsibility_key",
-        "responsibility",
-        "source_file",
-    ],
-    TableName.EDITED_RESPONSIBILITIES.value: [
-        "url",
-        "iteration",
-        "llm_provider",
-        "model_id",
-        "responsibility_key",
-        "requirement_key",
-        "responsibility",
-        "source_file",
+        "summary_text",
+        "summary_json",
+        "tokens_prompt",
+        "tokens_completion",
+        "tokens_total",
         "created_at",
         "updated_at",
-    ],
-    TableName.SIMILARITY_METRICS.value: [
-        "url",
-        "iteration",
-        "version",  # original/edited
-        "resp_llm_provider",  # editor provenance (for edited pass)
-        "resp_model_id",
-        "similarity_backend",  # scoring engines
-        "nli_backend",
-        "responsibility_key",
-        "requirement_key",
-        "responsibility",
-        "requirement",
-        "bert_score_precision",
-        "soft_similarity",
-        "word_movers_distance",
-        "deberta_entailment_score",
-        "roberta_entailment_score",
-        "bert_score_precision_cat",
-        "soft_similarity_cat",
-        "word_movers_distance_cat",
-        "deberta_entailment_score_cat",
-        "roberta_entailment_score_cat",
-        "scaled_bert_score_precision",
-        "scaled_soft_similarity",
-        "scaled_word_movers_distance",
-        "scaled_deberta_entailment_score",
-        "scaled_roberta_entailment_score",
-        "composite_score",
-        "pca_score",
-        "source_file",
     ],
 }
 
@@ -227,7 +154,6 @@ class TableSchema:
         self.primary_keys = primary_keys
 
         # Enforce explicit order (no fallbacks to model). Either provided or from registry.
-        final_cols: list[str]
         if column_order is not None:
             final_cols = column_order
         else:
@@ -282,7 +208,7 @@ class TableSchema:
     def select_by_url_sql(
         self,
         cols: list[str],
-        order_by: str | list[str] | None = None,  # ← widened type
+        order_by: str | list[str] | None = None,
     ) -> str:
         """
         Build a parameterized SELECT to retrieve all rows for a given URL.
@@ -360,7 +286,7 @@ class TableSchema:
         return f"{self.table_name} table\nPrimary keys: {', '.join(self.primary_keys)}"
 
 
-# ✅ Centralized registry
+# ✅ Centralized registry (4 tables: URL, PIPELINE_CONTROL, WEB_PAGE, WEB_SUMMARY)
 DUCKDB_SCHEMA_REGISTRY = {
     # FSM snapshot ONLY: one row per (url, iteration)
     TableName.PIPELINE_CONTROL: TableSchema(
@@ -370,80 +296,24 @@ DUCKDB_SCHEMA_REGISTRY = {
         column_order=DUCKDB_COLUMN_ORDER[TableName.PIPELINE_CONTROL.value],
     ),
     # Seed list: NO iteration
-    TableName.JOB_URLS: TableSchema(
-        model=JobUrlsRow,
-        table_name=TableName.JOB_URLS.value,
+    TableName.URL: TableSchema(
+        model=UrlRow,
+        table_name=TableName.URL.value,
         primary_keys=["url"],
-        column_order=DUCKDB_COLUMN_ORDER[TableName.JOB_URLS.value],
+        column_order=DUCKDB_COLUMN_ORDER[TableName.URL.value],
     ),
-    # Raw scraped content (per pass; provider/model stamped in PK)
-    TableName.JOB_POSTINGS: TableSchema(
-        model=JobPostingsRow,
-        table_name=TableName.JOB_POSTINGS.value,
+    # Raw + cleaned content (per pass)
+    TableName.WEB_PAGE: TableSchema(
+        model=WebPageRow,
+        table_name=TableName.WEB_PAGE.value,
+        primary_keys=["url", "iteration"],
+        column_order=DUCKDB_COLUMN_ORDER[TableName.WEB_PAGE.value],
+    ),
+    # LLM-generated summaries (per pass; provider/model stamped in PK)
+    TableName.WEB_SUMMARY: TableSchema(
+        model=WebSummaryRow,
+        table_name=TableName.WEB_SUMMARY.value,
         primary_keys=["url", "iteration", "llm_provider", "model_id"],
-        column_order=DUCKDB_COLUMN_ORDER[TableName.JOB_POSTINGS.value],
-    ),
-    # # Requirements extracted from posting (per pass; provider/model stamped in PK)
-    # TableName.EXTRACTED_REQUIREMENTS: TableSchema(
-    #     model=ExtractedRequirementsRow,
-    #     table_name=TableName.EXTRACTED_REQUIREMENTS.value,
-    #     primary_keys=[
-    #         "url",
-    #         "iteration",
-    #         "requirement_key",
-    #         "requirement_category_key",
-    #         "llm_provider",
-    #         "model_id",
-    #     ],
-    #     column_order=DUCKDB_COLUMN_ORDER[TableName.EXTRACTED_REQUIREMENTS.value],
-    # ),
-    # Flattened requirements used for matching (per pass)
-    TableName.FLATTENED_REQUIREMENTS: TableSchema(
-        model=FlattenedRequirementsRow,
-        table_name=TableName.FLATTENED_REQUIREMENTS.value,
-        primary_keys=[
-            "url",
-            "iteration",
-            "requirement_key",
-            "llm_provider",
-            "model_id",
-        ],
-        column_order=DUCKDB_COLUMN_ORDER[TableName.FLATTENED_REQUIREMENTS.value],
-    ),
-    # Canonical resume bullets (per pass)
-    TableName.FLATTENED_RESPONSIBILITIES: TableSchema(
-        model=FlattenedResponsibilitiesRow,
-        table_name=TableName.FLATTENED_RESPONSIBILITIES.value,
-        primary_keys=["url", "iteration", "responsibility_key"],
-        column_order=DUCKDB_COLUMN_ORDER[TableName.FLATTENED_RESPONSIBILITIES.value],
-    ),
-    # LLM-edited bullets (per pass; provider-specific)
-    TableName.EDITED_RESPONSIBILITIES: TableSchema(
-        model=EditedResponsibilitiesRow,
-        table_name=TableName.EDITED_RESPONSIBILITIES.value,
-        primary_keys=[
-            "url",
-            "iteration",
-            "responsibility_key",
-            "requirement_key",
-            "llm_provider",
-            "model_id",
-        ],
-        column_order=DUCKDB_COLUMN_ORDER[TableName.EDITED_RESPONSIBILITIES.value],
-    ),
-    # Pairwise similarity/entailment scores (per pass)
-    TableName.SIMILARITY_METRICS: TableSchema(
-        model=SimilarityMetricsRow,
-        table_name=TableName.SIMILARITY_METRICS.value,
-        primary_keys=[
-            "url",
-            "iteration",
-            "responsibility_key",
-            "requirement_key",
-            "version",
-            "resp_llm_provider",
-            "resp_model_id",
-        ],
-        column_order=DUCKDB_COLUMN_ORDER[TableName.SIMILARITY_METRICS.value],
+        column_order=DUCKDB_COLUMN_ORDER[TableName.WEB_SUMMARY.value],
     ),
 }

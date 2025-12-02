@@ -1,8 +1,8 @@
 """
-Centralized logging setup for job_bot.
+Centralized logging setup for the FSM web summary demo.
 
 Usage:
-    from job_bot.logger import init_logging, log_and_flush
+    from utils.logging_config import init_logging, log_and_flush
     init_logging()  # call once at app startup
 
 This module:
@@ -21,7 +21,6 @@ from pathlib import Path
 import getpass
 from datetime import datetime
 from typing import Optional
-
 
 DEFAULT_MARKER = ".git"
 DEFAULT_LOG_SUBDIR = "logs"
@@ -87,10 +86,11 @@ def init_logging(
     - Ensures `<root>/<logs_subdir>` exists.
     - Adds a RotatingFileHandler (UTF-8, 100MB x 5) and a console StreamHandler.
     - Avoids duplicate handlers if called multiple times.
-    - Sets `job_bot` logger to propagate to root and not attach its own handlers.
+    - Leaves package loggers (pipelines, db_io, fsm, llm_api, models, utils)
+      handler-free and propagating to the root logger.
     """
     root_logger = logging.getLogger()
-    if getattr(root_logger, "_job_bot_inited", False):
+    if getattr(root_logger, "_fsm_demo_inited", False):
         # Already initialized; nothing to do.
         return
 
@@ -133,13 +133,14 @@ def init_logging(
     if not _has_stream_handler(root_logger):
         root_logger.addHandler(console_handler)
 
-    # Ensure child loggers rely on root handlers only
-    jb = logging.getLogger("job_bot")
-    jb.handlers = []  # no per-module handlers
-    jb.propagate = True
+    # Ensure our top-level packages rely on root handlers only
+    for pkg_name in ("pipelines", "db_io", "fsm", "llm_api", "models", "utils"):
+        pkg_logger = logging.getLogger(pkg_name)
+        pkg_logger.handlers = []
+        pkg_logger.propagate = True
 
     # Mark as initialized and announce destination
-    root_logger._job_bot_inited = True  # type: ignore[attr-defined]
+    root_logger._fsm_demo_inited = True  # type: ignore[attr-defined]
     logging.getLogger(__name__).info("Logs → %s", log_file_path)
 
 
@@ -172,8 +173,6 @@ __all__ = [
 try:
     init_logging()
 except Exception as e:
-    import logging
-
     logging.basicConfig(level=logging.INFO)
     logging.getLogger(__name__).warning(
         "⚠️ Logging auto-init failed, using basicConfig: %s", e

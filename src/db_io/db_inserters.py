@@ -10,10 +10,11 @@ from typing import Dict, Literal, Optional, Any
 import pandas as pd
 import yaml
 
-from job_bot.db_io.get_db_connection import get_db_connection
-from job_bot.db_io.db_schema_registry import DUCKDB_SCHEMA_REGISTRY, TableName
-from job_bot.db_io.db_utils import align_df_with_schema
-from job_bot.config.project_config import DB_INSERTERS_YAML
+from db_io.get_db_connection import get_db_connection
+from db_io.db_schema_registry import DUCKDB_SCHEMA_REGISTRY
+from db_io.db_utils import align_df_with_schema
+from config.project_config import DB_INSERTERS_YAML
+from fsm.pipeline_enums import TableName
 
 logger = logging.getLogger(__name__)
 

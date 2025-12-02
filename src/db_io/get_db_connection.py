@@ -4,7 +4,7 @@ from pathlib import Path
 import logging
 from typing import Optional
 import duckdb
-from job_bot.utils.find_project_root import find_project_root
+from utils.find_project_root import find_project_root
 
 
 logger = logging.getLogger(__name__)

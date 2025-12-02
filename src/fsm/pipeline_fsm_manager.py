@@ -17,10 +17,10 @@ import logging
 from typing import Optional, Union
 
 # From project modules
-from job_bot.db_io.get_db_connection import get_db_connection
-from job_bot.db_io.pipeline_enums import TableName, PipelineStage, PipelineTaskState
-from job_bot.fsm.pipeline_fsm import PipelineFSM
-from job_bot.models.db_table_models import PipelineState
+from db_io.get_db_connection import get_db_connection
+from fsm.pipeline_enums import TableName, PipelineStage, PipelineTaskState
+from fsm.pipeline_fsm import PipelineFSM
+from models.db_table_models import PipelineState
 
 logger = logging.getLogger(__name__)
 
