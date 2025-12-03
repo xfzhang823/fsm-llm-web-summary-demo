@@ -211,7 +211,7 @@ async def process_web_scrape_batch_async_fsm(
         1. `try_claim_one()`:
            - Acquires a machine lease, setting worker_id and lease_until.
         2. Stage gate:
-           - Ensures the FSM is currently at stage=URL for this URL.
+           - Ensures the FSM is currently at stage=web_page for this URL.
            - If not, immediately releases the lease with ERROR and skips.
         3. `fetch_and_persist_webpage_async()`:
            - Fetches cleaned text and inserts into `web_page`.
@@ -299,6 +299,9 @@ async def process_web_scrape_batch_async_fsm(
             if ok:
                 # Advance FSM: URL → WEB_PAGE
                 try:
+                    fsm.mark_status(
+                        status=final_status
+                    )  #! need to update status in PipelineFSM class
                     fsm.step()
                 except Exception as e:
                     logger.exception(
@@ -404,7 +407,7 @@ async def run_web_scrape_pipeline_async_fsm(
     )
 
     worklist: list[tuple[str, int]] = get_claimable_worklist(
-        stage=PipelineStage.URL,
+        stage=PipelineStage.WEB_PAGE,
         status=statuses,
         max_rows=max_concurrent_tasks * 4 or 1000,
     )

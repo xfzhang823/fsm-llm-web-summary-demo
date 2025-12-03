@@ -263,7 +263,7 @@ class PipelineFSM:
         Advance to the next stage (mutates both `stage` and `status` and may
             set `task_state`).
         Contract:
-        - If already at the final stage, idempotently set `task_state=COMPLETED`
+        - If already at the final stage, idempotently set `task_state=Pause`
             and return.
         - Otherwise:
             1) mark current stage as COMPLETED (in-memory),
@@ -277,6 +277,10 @@ class PipelineFSM:
             # --- Resolve canonical final stage explicitly (avoid ordering bugs) ---
             ordered: tuple[PipelineStage, ...] = tuple(self.STAGES)
             final_stage: PipelineStage = ordered[-1]
+
+            # todo: debug; delete later
+            logger.info(f"stage before step: {self.state_model.stage.value}")
+            logger.info(f"status before step: {self.state_model.status.value}")
 
             # --- Already final? Just idempotently stamp lifecycle and return ---
             if self._state == final_stage:
@@ -294,6 +298,11 @@ class PipelineFSM:
                     self.state_model.updated_at = datetime.now()
                     update_and_persist_pipeline_state(self.state_model, table_name)
                 self._log_info("✅ Already at final stage: %s", self._state.name)
+
+                # todo: debug; delete later
+                logger.info(f"stage after step: {self.state_model.stage.value}")
+                logger.info(f"status after step: {self.state_model.status.value}")
+
                 return
 
             self._log_info(

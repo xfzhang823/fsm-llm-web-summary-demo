@@ -23,6 +23,7 @@ PIPELINE_STAGE_SEQUENCE: list[PipelineStage] = [
     PipelineStage.URL,
     PipelineStage.WEB_PAGE,
     PipelineStage.WEB_SUMMARY,
+    PipelineStage.DONE,
 ]
 
 # String values (useful for SQL, logging, or UI)

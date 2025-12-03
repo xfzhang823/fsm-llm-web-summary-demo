@@ -190,6 +190,8 @@ class PipelineState(TimestampedMixin, AppBaseModel):
     @field_validator("task_state", mode="before")
     @classmethod
     def _coerce_task_state(cls, v: Any, info: ValidationInfo) -> PipelineTaskState:
+        if isinstance(v, PipelineTaskState):
+            return v
         if v is None or str(v).strip() == "":
             status = info.data.get("status")
             if status in (

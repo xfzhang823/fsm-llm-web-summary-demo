@@ -1,5 +1,5 @@
 """
-db_io/state_sync.py
+fsm/state_sync.py
 
 Control-plane helpers that delegate to the unified loaders/inserters.
 
@@ -128,7 +128,7 @@ def advance_completed_one(
     try:
         status_str = (
             raw_status.value
-            if hasattr(raw_status, "value")
+            if hasattr(raw_status, "value") and raw_status is not None
             else str(raw_status).lower()
         )
     except Exception:

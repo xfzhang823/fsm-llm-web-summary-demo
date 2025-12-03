@@ -50,4 +50,4 @@ def run_update_urls_pipeline_fsm(
         mode=mode,
     )
 
-    logger.info("✅ job_urls ingestion complete.")
+    logger.info("✅ urls ingestion complete.")

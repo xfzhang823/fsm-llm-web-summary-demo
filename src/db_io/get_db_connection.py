@@ -5,7 +5,7 @@ import logging
 from typing import Optional
 import duckdb
 from utils.find_project_root import find_project_root
-
+from config.project_config import DUCKDB_FILE
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ def get_db_connection(
         raise FileNotFoundError("Could not locate the project root")
 
     if db_path is None:
-        db_path = root_dir / "pipeline_data/db/pipeline_data.duckdb"
+        db_path = DUCKDB_FILE
     elif isinstance(db_path, str):
         db_path = Path(db_path)
 

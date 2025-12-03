@@ -612,9 +612,11 @@ def align_df_with_schema(
 
     This function:
       - Ensures all schema columns are present
+      - Drops unexpected columns
       - Reorders columns to match DuckDB column order
+      - Cleans and coerces problematic types
+        (nested dicts/lists → JSON string; BaseModel/HttpUrl → str)
       - Deduplicates fully identical rows (before timestamps are added)
-      - Cleans and coerces problematic types (nested dicts/lists → JSON; BaseModel/HttpUrl → str)
       - Replaces pandas NA/NaN with Python None
 
     Args:
@@ -622,47 +624,50 @@ def align_df_with_schema(
         schema_columns: Expected column names in final DuckDB order.
         strict:
             If True: missing columns error out.
-            If False: missing columns are created with None; extras are dropped with a warning.
+            If False: missing columns are created with None; extras are
+            dropped with a warning.
 
     Returns:
         pd.DataFrame: Cleaned, schema-aligned DataFrame.
     """
     df = df.copy()
 
-    # 1) Drop exact duplicates early (pre-metadata)
-    original_len = len(df)
-    df.drop_duplicates(inplace=True)
-    deduped_len = len(df)
-    if deduped_len < original_len:
-        logger.info(f"Dropped {original_len - deduped_len} duplicate rows")
-
-    # 2) Detect mismatches before adding/removing columns
+    # 1) Detect mismatches before adding/removing columns
     missing_before = [c for c in schema_columns if c not in df.columns]
     extra_in_df = [c for c in df.columns if c not in schema_columns]
 
-    # 3) Strict handling for missing columns
+    # 2) Strict handling for missing columns
     if strict and missing_before:
         raise ValueError(f"Missing columns in DataFrame: {missing_before}")
 
-    # 4) Drop unexpected columns (explicit + observable)
+    # 3) Drop unexpected columns (explicit + observable)
     if extra_in_df:
         logger.warning(f"Dropping unexpected columns: {extra_in_df}")
         df = df.drop(columns=extra_in_df)
 
-    # 5) Add still-missing schema columns as None
+    # 4) Add still-missing schema columns as None
     for col in schema_columns:
         if col not in df.columns:
             df[col] = None
             logger.debug(f"Added missing column: {col}")
 
-    # 6) Reorder to schema
+    # 5) Reorder to schema
     df = df[[col for col in schema_columns]]
 
-    # 7) Coerce problematic types in a single pass per column
+    # 6) Coerce problematic types in a single pass per column
+    #    (dict/list → JSON string, BaseModel/HttpUrl → str, etc.)
     for col in df.columns:
         df[col] = df[col].map(_coerce_cell)
+        # Normalize pandas NA/NaN to Python None for DuckDB
         if df[col].isna().any():
             df[col] = df[col].where(pd.notna(df[col]), None)
+
+    # 7) Drop exact duplicates AFTER coercion (so dicts/lists are hashable as strings)
+    original_len = len(df)
+    df.drop_duplicates(inplace=True)
+    deduped_len = len(df)
+    if deduped_len < original_len:
+        logger.info(f"Dropped {original_len - deduped_len} duplicate rows")
 
     logger.info(f"Aligned DataFrame with schema: {schema_columns}")
     return df
@@ -862,7 +867,6 @@ __all__ = [
     "get_urls_by_stage_and_status",
     "get_urls_by_status",
     "get_urls_by_stage",
-    "get_urls_ready_for_transition",
     # Lookups
     "get_pipeline_state",
     "get_current_stage_for_url",

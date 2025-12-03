@@ -41,11 +41,9 @@ says.
 
 Webpage Information:
 URL: {url}
-Title: {title}
-Headings: {headings}
 
 CONTENT:
-{clean_text}
+{content}
 
 Instructions:
 - Produce 3–6 short, information-rich bullet points.
@@ -72,11 +70,9 @@ details that the content does not support.
 
 Webpage Information:
 URL: {url}
-Title: {title}
-Headings: {headings}
 
 CONTENT:
-{clean_text}
+{content}
 
 Output Format:
 Return ONLY a valid JSON object (no comments, no markdown). The structure must be:
@@ -120,7 +116,7 @@ You are given raw webpage content. Extract the **best possible short title** tha
 represents the main subject of the page.
 
 CONTENT:
-{clean_text}
+{content}
 
 Output:
 Return ONLY the title as a single plain-text line. No quotes, no markdown.
@@ -136,7 +132,7 @@ Extract the top 3–5 conceptual headings from the following webpage text.
 These are not HTML headings, but human-level major themes.
 
 CONTENT:
-{clean_text}
+{content}
 
 Output:
 Return a plain-text list, one heading per line, NO numbering, NO markdown.

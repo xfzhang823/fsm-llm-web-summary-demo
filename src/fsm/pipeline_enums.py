@@ -66,6 +66,7 @@ class PipelineStage(str, Enum):
     URL = "URL"
     WEB_PAGE = "WEB_PAGE"
     WEB_SUMMARY = "WEB_SUMMARY"
+    DONE = "DONE"
 
     @classmethod
     def list(cls) -> list["PipelineStage"]:

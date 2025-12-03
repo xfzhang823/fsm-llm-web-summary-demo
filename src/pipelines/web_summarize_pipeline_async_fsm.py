@@ -77,8 +77,8 @@ from llm_api.llm_api_utils_async import (
 )
 from models.llm_response_models import JSONResponse
 from models.web_content_models import WebSummaryJSON
-from models.db_table_models import WebPageRow, WebSummaryRow
 from models.web_content_models import WebPageContent
+from models.db_table_models import WebPageRow, WebSummaryRow
 
 from config.project_config import (
     OPENAI,
@@ -87,7 +87,10 @@ from config.project_config import (
     CLAUDE_HAIKU,
 )
 
-from llm_api.prompt_templates_web import SUMMARIZE_WEBPAGE_TEXT_PROMPT
+from llm_api.prompt_templates_web import (
+    SUMMARIZE_WEBPAGE_TEXT_PROMPT,
+    SUMMARIZE_WEBPAGE_TO_JSON_PROMPT,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -265,7 +268,9 @@ async def summarize_and_persist_webpage_async(
 
     # 3) Call LLM under concurrency semaphore
     async with semaphore:
-        prompt = SUMMARIZE_WEBPAGE_TEXT_PROMPT.format(content=page_content.clean_text)
+        prompt = SUMMARIZE_WEBPAGE_TO_JSON_PROMPT.format(
+            url=url, content=page_content.clean_text or ""
+        )
         logger.debug("LLM summarization prompt for %s:\n%s", url, prompt)
 
         try:
@@ -411,7 +416,7 @@ async def process_web_summary_batch_async_fsm(
         # 2) Stage gate check (IMPORTANT: release lease if mismatch)
         #    We only want to summarize when FSM is **at** WEB_PAGE.
         # ---------------------------------------------------------
-        if fsm.state != PipelineStage.WEB_PAGE.value:
+        if fsm.state != PipelineStage.WEB_SUMMARY.value:
             logger.info(
                 "⏩ Wrong stage=%s for %s — expected WEB_PAGE; skipping",
                 fsm.state,
@@ -442,18 +447,31 @@ async def process_web_summary_batch_async_fsm(
 
             final_status = PipelineStatus.COMPLETED if ok else PipelineStatus.ERROR
 
-            await asyncio.to_thread(
+            # todo: debug; delete later
+            logger.debug(f"ok is {ok}")
+            logger.debug(f"stage before release: {fsm.state}")
+            logger.debug(f"status before release: {final_status}")
+
+            released = await asyncio.to_thread(
                 release_one,
                 url=url,
                 iteration=iteration,
                 worker_id=worker_id,
                 final_status=final_status,
             )
-            released = True
+            if not released:
+                logger.warning(
+                    "⚠️ release_one failed for %s [%s] (worker_id mismatch or no lease row)",
+                    url,
+                    iteration,
+                )
 
             if ok:
                 # Advance FSM: WEB_PAGE → WEB_SUMMARY
                 try:
+                    fsm.mark_status(
+                        status=final_status
+                    )  #! need to update status in PipelineFSM class
                     fsm.step()
                 except Exception as e:
                     logger.exception(
@@ -565,7 +583,7 @@ async def run_web_summary_pipeline_async_fsm(
     )
 
     worklist: list[tuple[str, int]] = get_claimable_worklist(
-        stage=PipelineStage.WEB_PAGE,
+        stage=PipelineStage.WEB_SUMMARY,
         status=statuses,
         max_rows=max_concurrent_tasks * 4 or 1000,
     )
@@ -575,7 +593,7 @@ async def run_web_summary_pipeline_async_fsm(
         worklist = [(u, it) for (u, it) in worklist if u in filter_set]
 
     if not worklist:
-        logger.info("📭 No items to summarize at stage 'WEB_PAGE'.")
+        logger.info("📭 No items to summarize at stage 'WEB_SUMMARY'.")
         return
 
     worker_id = generate_worker_id(prefix="web_summary")
@@ -600,4 +618,4 @@ async def run_web_summary_pipeline_async_fsm(
     )
 
     await asyncio.gather(*tasks)
-    logger.info("✅ Finished Stage B (WEB_PAGE → WEB_SUMMARY).")
+    logger.info("✅ Finished Stage B (WEB_SUMMARY).")

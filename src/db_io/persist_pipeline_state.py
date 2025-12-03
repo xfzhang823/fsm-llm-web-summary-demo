@@ -5,19 +5,19 @@ from typing import Optional
 
 import pandas as pd
 
-from job_bot.db_io.pipeline_enums import (
+from fsm.pipeline_enums import (
     TableName,
     PipelineStatus,
     PipelineTaskState,
     PipelineStage,
 )
-from job_bot.models.db_table_models import PipelineState
-from job_bot.db_io.db_inserters import insert_df_with_config
-from job_bot.fsm.fsm_stage_config import PIPELINE_STAGE_SEQUENCE
+from models.db_table_models import PipelineState
+from db_io.db_inserters import insert_df_with_config
+from fsm.fsm_stage_config import PIPELINE_STAGE_SEQUENCE
 
 logger = logging.getLogger(__name__)
 
-URL_ONLY_STAGES: set[PipelineStage] = {PipelineStage.JOB_URLS}  # extend if needed
+URL_ONLY_STAGES: set[PipelineStage] = {PipelineStage.URL}  # extend if needed
 
 
 def _normalize_task_state_for_stage(state_model: PipelineState) -> PipelineTaskState:
@@ -98,28 +98,6 @@ def update_and_persist_pipeline_state(
         # Ensure correct project status
         state_model.task_state = _normalize_task_state_for_stage(state_model)
 
-        # todo: debug; delete later after debugging
-        for name, field in state_model.model_fields.items():
-            val = getattr(state_model, name, None)
-            # Avoid calling model_dump to not trigger the error
-            try:
-                t = type(val).__name__
-            except Exception:
-                t = "<unrepr>"
-            logger.debug("state_model.%s -> %r (%s)", name, val, t)
-            # 2) Dump the ENTIRE model in JSON mode so Enums → values, HttpUrl → str
-            #    exclude_none=False ensures optional columns (e.g., decision_flag) are included
-
-        for name, field in state_model.model_fields.items():  # Pydantic v2
-            value = getattr(state_model, name)
-            logger.debug(
-                "state_model.%s -> %r (%s)",
-                name,
-                value,
-                type(value).__name__,
-            )
-            # todo: delete later
-
         # payload = state_model.model_dump(mode="json", exclude_none=False)
         payload = state_model.model_dump(
             exclude_none=False
@@ -143,6 +121,11 @@ def update_and_persist_pipeline_state(
         )
 
         logger.info("✅ Upserted pipeline state for %s", state_model.url)
+
+        # todo: debug; delete later
+        logger.info(f"stage after persist: {state_model.stage.value}")
+        logger.info(f"status after persist: {state_model.status.value}")
+
     except Exception as e:
         logger.error(
             "❌ Failed to upsert pipeline state for %s: %s",

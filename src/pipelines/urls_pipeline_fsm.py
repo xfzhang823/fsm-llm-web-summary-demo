@@ -1,4 +1,4 @@
-# pipelines_with_fsm/job_urls_pipeline_fsm.py
+# pipelines_with_fsm/urls_pipeline_fsm.py
 
 from __future__ import annotations
 
@@ -60,7 +60,7 @@ def run_urls_pipeline_fsm(*, max_batch: Optional[int] = None) -> Dict[str, int]:
     --------
     Running the URL-stage FSM runner:
 
-        >>> run_job_urls_pipeline_fsm(max_batch=5)
+        >>> run_urls_pipeline_fsm(max_batch=5)
         {
             "found": 5,
             "claimed": 5,
@@ -70,7 +70,7 @@ def run_urls_pipeline_fsm(*, max_batch: Optional[int] = None) -> Dict[str, int]:
 
     If there are no READY + NEW rows at the URL stage:
 
-        >>> run_job_urls_pipeline_fsm()
+        >>> run_urls_pipeline_fsm()
         {
             "found": 0,
             "claimed": 0,
@@ -80,7 +80,7 @@ def run_urls_pipeline_fsm(*, max_batch: Optional[int] = None) -> Dict[str, int]:
 
     If some rows are lost to race conditions while claiming:
 
-        >>> run_job_urls_pipeline_fsm(max_batch=10)
+        >>> run_urls_pipeline_fsm(max_batch=10)
         {
             "found": 10,
             "claimed": 7,
@@ -90,7 +90,7 @@ def run_urls_pipeline_fsm(*, max_batch: Optional[int] = None) -> Dict[str, int]:
 
     If a row is claimed but is not actually at stage URL (e.g., drift):
 
-        >>> run_job_urls_pipeline_fsm()
+        >>> run_urls_pipeline_fsm()
         {
             "found": 3,
             "claimed": 3,
@@ -118,13 +118,13 @@ def run_urls_pipeline_fsm(*, max_batch: Optional[int] = None) -> Dict[str, int]:
     )
 
     if not claimables:
-        logger.info("[job_urls_pipeline_fsm] No claimable rows at 'URL'.")
+        logger.info("[urls_pipeline_fsm] No claimable rows at 'URL'.")
         return {"found": 0, "claimed": 0, "completed": 0, "enqueued_next": 0}
 
     claimed = completed = enqueued = 0
     found = len(claimables)
     logger.info(
-        "[job_urls_pipeline_fsm] Found %d claimable row(s) at 'URL' → processing...",
+        "[urls_pipeline_fsm] Found %d claimable row(s) at 'URL' → processing...",
         found,
     )
 
@@ -142,7 +142,7 @@ def run_urls_pipeline_fsm(*, max_batch: Optional[int] = None) -> Dict[str, int]:
             fsm = fsm_manager.get_fsm(url=url)
             if fsm.get_current_stage() != PipelineStage.URL:
                 logger.warning(
-                    "[job_urls_pipeline_fsm] URL not at 'URL'; releasing as ERROR: "
+                    "[urls_pipeline_fsm] URL not at 'URL'; releasing as ERROR: "
                     "%s (stage=%s)",
                     url,
                     fsm.get_current_stage(),
@@ -159,28 +159,29 @@ def run_urls_pipeline_fsm(*, max_batch: Optional[int] = None) -> Dict[str, int]:
             fsm.mark_status(status=PipelineStatus.COMPLETED, notes="URL stage done")
             completed += 1
 
-            # Enqueue next stage; conventionally step() creates next stage with NEW
-            fsm.step()
-            enqueued += 1
-
-            # Release lease with COMPLETED
-            release_ok = release_one(
+            # Release the lease for this stage
+            release_one(
                 url=url,
                 iteration=iter_,
                 worker_id=worker_id,
                 final_status=PipelineStatus.COMPLETED,
             )
-            if not release_ok:
-                logger.warning(
-                    "[job_urls_pipeline_fsm] Release failed "
-                    "(mismatched worker or lost lease?) url=%s iter=%s",
-                    url,
-                    iter_,
-                )
+
+            # Enqueue next stage; conventionally step() creates next stage with NEW
+            fsm.step()
+            enqueued += 1
+
+            # After fsm.mark_status(...) and fsm.step()
+            release_one(
+                url=url,
+                iteration=iter_,
+                worker_id=worker_id,
+                final_status=PipelineStatus.COMPLETED,
+            )
 
         except Exception:
             logger.exception(
-                "[job_urls_pipeline_fsm] Error completing/stepping url=%s iter=%s",
+                "[urls_pipeline_fsm] Error completing/stepping url=%s iter=%s",
                 url,
                 iter_,
             )
@@ -193,7 +194,7 @@ def run_urls_pipeline_fsm(*, max_batch: Optional[int] = None) -> Dict[str, int]:
             )
 
     logger.info(
-        "[job_urls_pipeline_fsm] done — found=%d, claimed=%d, completed=%d, "
+        "[urls_pipeline_fsm] done — found=%d, claimed=%d, completed=%d, "
         "enqueued_next=%d",
         found,
         claimed,

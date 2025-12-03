@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Callable, Literal, Union
+from typing import Callable, Literal, Union, Optional
 import pandas as pd
 
 # Import from project
@@ -39,7 +39,7 @@ __all__ = [
 # Core generic helper
 # ---------------------------------------------------------------------------
 
-ModelLoaderFn = Callable[[Path], UrlFile]
+ModelLoaderFn = Callable[[Path], Optional[UrlFile]]
 
 
 def ingest_single_file(

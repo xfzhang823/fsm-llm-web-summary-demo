@@ -53,27 +53,21 @@ def load_model_from_json(
     return model_cls.model_validate(raw)
 
 
-def load_url_file_model(file_path: Union[str, Path]) -> UrlFile:
+def load_url_file_model(file_path: Path | str) -> UrlFile | None:
     """
-    Load and validate the URL seed file as a UrlFile model.
+    Load and validate the URL seed JSON into a UrlFile model.
 
-    This is the one the URL ingestion pipeline uses.
+    Supports either:
+      - [ { ... }, { ... } ]
+      - { "urls": [ { ... }, { ... } ] }
+    as defined by UrlFile.from_path().
     """
     try:
-        model = load_model_from_json(file_path, UrlFile)
+        model = UrlFile.from_path(file_path)
         logger.info(
-            "✅ Loaded URL seed file from %s with %d entries",
-            file_path,
-            len(model.urls),
+            "✅ Loaded UrlFile model from %s with %d urls", file_path, len(model.urls)
         )
         return model
-    except (OSError, json.JSONDecodeError) as e:
-        logger.error(
-            "❌ Failed to read URL seed file %s: %s", file_path, e, exc_info=True
-        )
-        raise
-    except ValidationError as e:
-        logger.error(
-            "❌ Validation error in URL seed file %s: %s", file_path, e, exc_info=True
-        )
-        raise
+    except Exception:
+        logger.exception("❌ Failed to load UrlFile model from %s", file_path)
+        return None

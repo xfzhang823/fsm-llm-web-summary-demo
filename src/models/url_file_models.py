@@ -52,6 +52,7 @@ class UrlFile(BaseModel):
 
     @classmethod
     def from_path(cls, path: Path | str) -> "UrlFile":
+        """Function to load from json -> model"""
         path = Path(path)
         data = json.loads(path.read_text(encoding="utf-8"))
 
