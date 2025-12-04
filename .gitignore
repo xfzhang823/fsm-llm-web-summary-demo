@@ -26,6 +26,7 @@ ruff_cache/
 
 # Documents & Data
 documents/
+pipeline_data/
 
 # DuckDB
 *.duckdb

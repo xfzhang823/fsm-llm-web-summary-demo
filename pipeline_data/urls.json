@@ -23,5 +23,20 @@
     "url": "https://openai.com/research",
     "source": "manual",
     "tags": ["ai", "research", "technology"]
+  },
+  {
+    "url": "https://www.w3.org/TR/WCAG21/",
+    "source": "w3c_spec",
+    "tags": ["web-standard", "accessibility", "w3c"]
+  },
+  {
+    "url": "https://plato.stanford.edu/entries/value-theory/",
+    "source": "academic_ref",
+    "tags": ["philosophy", "ethics", "value-theory", "longform"]
+  },
+  {
+    "url": "https://www.iana.org/domains/reserved",
+    "source": "test",
+    "tags": ["iana", "domains"]
   }
 ]
