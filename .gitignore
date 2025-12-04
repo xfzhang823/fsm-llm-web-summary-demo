@@ -26,7 +26,12 @@ ruff_cache/
 
 # Documents & Data
 documents/
-pipeline_data/
+
+# Ignore everything in pipeline_data
+pipeline_data/*
+
+# But keep urls.json
+!pipeline_data/urls.json
 
 # DuckDB
 *.duckdb
