@@ -11,9 +11,12 @@ Works for ANY stage:
     WEB_SUMMARY → DONE
 """
 
-from db_io.db_utils import get_urls_by_status, get_urls_from_pipeline_control
+import logging
+from db_io.db_utils import get_urls_from_pipeline_control
 from fsm.pipeline_enums import PipelineStatus
 from fsm.pipeline_fsm_manager import PipelineFSMManager
+
+logger = logging.getLogger(__name__)
 
 
 def advance_all_completed():
@@ -31,24 +34,21 @@ def advance_all_completed():
         print("No COMPLETED rows found.")
         return
 
-    print(f"Found {len(urls)} COMPLETED rows. Advancing...")
+    logger.info(f"Found {len(urls)} COMPLETED rows. Advancing...")
 
     for url in urls:
         try:
             fsm = fsm_manager.get_fsm(url)
-
-            # Debug
-            print(f"  • {url}: current={fsm.state}")
+            logger.debug(f"  • {url}: current={fsm.state}")
 
             # 2) Advance one stage
             fsm.step()
-
-            print(f"    → advanced to {fsm.state}")
+            logger.debug(f"    → advanced to {fsm.state}")
 
         except Exception as e:
-            print(f"⚠️ Failed advancing {url}: {e}")
+            logger.error(f"⚠️ Failed advancing {url}: {e}")
 
-    print("Done.")
+    logger.info("Done.")
 
 
 if __name__ == "__main__":
