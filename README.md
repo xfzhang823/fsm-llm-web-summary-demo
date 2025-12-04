@@ -457,55 +457,58 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    subgraph Input["📥 Inputs"]
+    subgraph Input["Inputs"]
         URLFile["urls.json"]
     end
 
-    subgraph Ingestion["🗂️ URL Ingestion"]
-        UF[UrlFile <br/> Pydantic Validation]
-        UP[URL → url table]
+    subgraph Ingestion["URL Ingestion"]
+        UF["UrlFile (Pydantic validation)"]
+        UP["Insert into url table"]
     end
 
-    subgraph DB["🦆 DuckDB (Structured Tables)"]
-        T1[url table]
-        T2[pipeline_control<br/>(FSM state + lease info)]
-        T3[web_page table]
-        T4[web_summary table]
+    subgraph DB["DuckDB Tables"]
+        T1["url"]
+        T2["pipeline_control\n(FSM state + leases)"]
+        T3["web_page"]
+        T4["web_summary"]
     end
 
-    subgraph StageA["🌐 Stage A: Scrape (URL → WEB_PAGE)"]
-        CA[get_claimable_worklist]
-        TC[try_claim_one]
-        FW[fetch_and_persist_webpage_async]
-        PC1[release_one + fsm.step()]
+    subgraph StageA["Stage A: Scrape (URL → WEB_PAGE)"]
+        CA["get_claimable_worklist"]
+        TC["try_claim_one"]
+        FW["fetch_and_persist_webpage_async"]
+        PC1["release_one + FSM step"]
     end
 
-    subgraph StageB["🧠 Stage B: Summarize (WEB_PAGE → WEB_SUMMARY)"]
-        CB[get_claimable_worklist]
-        TC2[try_claim_one]
-        LB[Load clean_text]
-        LLM[LLM API]
-        WR[WebSummaryRow]
-        PC2[release_one + fsm.step()]
+    subgraph StageB["Stage B: Summarize (WEB_PAGE → WEB_SUMMARY)"]
+        CB["get_claimable_worklist"]
+        TC2["try_claim_one"]
+        LB["Load clean_text from web_page"]
+        LLM["LLM (OpenAI / Anthropic)"]
+        WR["Insert WebSummaryRow"]
+        PC2["release_one + FSM step"]
     end
 
-    subgraph CLI["🖥️ CLI + Orchestrator"]
+    subgraph CLI["CLI / Orchestrator"]
         CLI1["python -m cli.run_pipelines"]
-        ALL[run_all_fsm()]
+        ALL["run_all_fsm()"]
     end
 
+    %% Data flow
     URLFile --> UF --> UP --> T1 --> T2
 
-    %% Stage A
+    %% Stage A path
     T2 --> CA --> TC --> FW --> T3 --> PC1 --> T2
 
-    %% Stage B
+    %% Stage B path
     T2 --> CB --> TC2 --> LB --> LLM --> WR --> T4 --> PC2 --> T2
 
+    %% Orchestrator
     CLI1 --> ALL
     ALL --> UP
     ALL --> StageA
     ALL --> StageB
+
 ```
 
 ---
@@ -650,11 +653,18 @@ sequenceDiagram
 ## **7. Control-Plane Interaction**
 
 ```mermaid
-flowchart TD
-    A[Row in pipeline_control] --> B{stage == expected?}
-    B -- Yes --> C[Process]
-    B -- No --> D[release_one(ERROR)]
-    D --> E[Skipped / left for human]
+flowchart LR
+    CLI["python -m cli.run_pipelines"] --> CMD{"command"}
+
+    CMD -->|scrape| S["run_web_scrape_pipeline_async_fsm()"]
+    CMD -->|summarize| Z["run_web_summary_pipeline_async_fsm()"]
+    CMD -->|all| A["create_all_db_tables()"]
+
+    A --> B["run_update_urls_pipeline_fsm()"]
+    B --> C["run_sync_url_table_to_pc_pipeline_fsm()"]
+    C --> D["run_urls_pipeline_fsm()"]
+    D --> S
+    S --> Z
 ```
 
 ---
@@ -663,15 +673,15 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    CLI["python -m cli.run_pipelines"] --> CMD{Command}
+    CLI["python -m cli.run_pipelines"] --> CMD{"command"}
 
-    CMD -->|scrape| S[run_web_scrape_pipeline_async_fsm()]
-    CMD -->|summarize| Z[run_web_summary_pipeline_async_fsm()]
-    CMD -->|all| A[create tables]
+    CMD -->|scrape| S["run_web_scrape_pipeline_async_fsm()"]
+    CMD -->|summarize| Z["run_web_summary_pipeline_async_fsm()"]
+    CMD -->|all| A["create_all_db_tables()"]
 
-    A --> B[run_update_urls_pipeline_fsm]
-    B --> C[run_sync_url_table_to_pc_pipeline_fsm]
-    C --> D[run_urls_pipeline_fsm]
+    A --> B["run_update_urls_pipeline_fsm()"]
+    B --> C["run_sync_url_table_to_pc_pipeline_fsm()"]
+    C --> D["run_urls_pipeline_fsm()"]
     D --> S
     S --> Z
 ```
