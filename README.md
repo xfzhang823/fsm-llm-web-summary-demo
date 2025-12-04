@@ -94,14 +94,12 @@ fsm_llm_web_summary_demo/
 ├── logs/
 ├── pipeline_data/
 │   ├── pipeline_data.duckdb                 # DuckDB database file
-│   ├── urls.json                            # Seed URLs for the pipeline
-│   ├── web_page.csv                         # Optional export/debug
-│   └── web_summary.csv                      # Optional export/debug
+│   └──  urls.json                            # Seed URLs for the pipeline
+│
 └── src/
     ├── main.py                              # High-level orchestrator entrypoint
     │
     ├── cli/
-    │   ├── __init__.py
     │   └── run_pipelines.py                 # CLI wrapper (python -m cli.run_pipelines)
     │
     ├── config/
@@ -152,9 +150,7 @@ fsm_llm_web_summary_demo/
     │   └── webpage_reader_async.py
     │
     ├── utils/
-    │   └── find_project_root.py
-    │
-    └── fsm_llm_web_summary_demo.egg-info/
+        └── find_project_root.py
 ````
 
 ---
